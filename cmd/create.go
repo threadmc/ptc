@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"ptc/helpers"
 
 	"github.com/spf13/cobra"
@@ -36,6 +37,23 @@ var createCmd = &cobra.Command{
 
 		origHash := helpers.SHA256Sum(origContent)
 
+		patchAbs, err := filepath.Abs(patch)
+		if err != nil {
+			fmt.Println("Error resolving patch file path:", err)
+			os.Exit(1)
+		}
+		patchDir := filepath.Dir(patchAbs)
+		fileAbs, err := filepath.Abs(file)
+		if err != nil {
+			fmt.Println("Error resolving target file path:", err)
+			os.Exit(1)
+		}
+		relTarget, err := filepath.Rel(patchDir, fileAbs)
+		if err != nil {
+			relTarget = file
+		}
+		relTarget = filepath.ToSlash(relTarget)
+
 		patchFile, err := os.Create(patch)
 		if err != nil {
 			fmt.Println("Error creating patch file:", err)
@@ -43,13 +61,14 @@ var createCmd = &cobra.Command{
 		}
 		defer patchFile.Close()
 
-		patchFile.WriteString(fmt.Sprintf("# PTC PATCH v1\nTARGET = %s\nHASH = %s\n\n", file, origHash))
-
-		patchFile.WriteString("--- ORIGINAL\n")
+		// Write patch header with relative target path
+		patchFile.WriteString(fmt.Sprintf("# PTC PATCH v1\nTARGET = %s\nHASH = %s\nDESCRIPTION = %s\n\n", relTarget, origHash, description))
+		patchFile.WriteString("--- PATCH CONTENT ---\n")
 		patchFile.Write(origContent)
 	},
 }
 
 func init() {
+	createCmd.Flags().StringVarP(&description, "description", "d", "", "Description for the patch")
 	rootCmd.AddCommand(createCmd)
 }

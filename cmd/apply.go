@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -17,17 +18,20 @@ var applyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		patchFile := args[0]
 
-		content, err := os.ReadFile(patchFile)
+		f, err := os.Open(patchFile)
 		if err != nil {
 			fmt.Println("Error reading patch file:", err)
 			os.Exit(1)
 		}
+		defer f.Close()
 
 		var targetFile, expectedHash string
+		var inContent bool
 		var patchContent []byte
-		lines := strings.Split(string(content), "\n")
 
-		for _, line := range lines {
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
 			if strings.HasPrefix(line, "TARGET") {
 				parts := strings.SplitN(line, "=", 2)
 				targetFile = strings.TrimSpace(parts[1])
@@ -36,9 +40,22 @@ var applyCmd = &cobra.Command{
 				parts := strings.SplitN(line, "=", 2)
 				expectedHash = strings.TrimSpace(parts[1])
 			}
-			if strings.HasPrefix(line, "---") {
-				patchContent = append(patchContent, []byte(strings.Join(lines[1:], "\n"))...)
+			if strings.HasPrefix(line, "--- PATCH CONTENT ---") {
+				inContent = true
+				continue
 			}
+			if inContent {
+				patchContent = append(patchContent, []byte(line+"\n")...)
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Println("Error reading patch file:", err)
+			os.Exit(1)
+		}
+
+		if targetFile == "" || expectedHash == "" {
+			fmt.Println("Malformed patch file: missing TARGET or HASH")
+			os.Exit(1)
 		}
 
 		currentContent, err := os.ReadFile(targetFile)
@@ -53,6 +70,11 @@ var applyCmd = &cobra.Command{
 			fmt.Println("Expected:", expectedHash)
 			fmt.Println("Found   :", currentHash)
 			os.Exit(1)
+		}
+
+		// Remove trailing newline if present (optional)
+		if len(patchContent) > 0 && patchContent[len(patchContent)-1] == '\n' {
+			patchContent = patchContent[:len(patchContent)-1]
 		}
 
 		err = os.WriteFile(targetFile, patchContent, 0644)

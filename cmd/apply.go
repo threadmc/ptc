@@ -11,6 +11,8 @@ import (
 	"ptc/helpers"
 )
 
+var noHashCheck bool
+
 var applyCmd = &cobra.Command{
 	Use:   "apply <patch>",
 	Short: "Apply a patch to the target file",
@@ -65,11 +67,13 @@ var applyCmd = &cobra.Command{
 		}
 		currentHash := helpers.SHA256Sum(currentContent)
 
-		if currentHash != expectedHash {
+		if !noHashCheck && currentHash != expectedHash {
 			fmt.Println("ERROR: File hash mismatch! Patch cannot be safely applied.")
 			fmt.Println("Expected:", expectedHash)
 			fmt.Println("Found   :", currentHash)
 			os.Exit(1)
+		} else if noHashCheck && currentHash != expectedHash {
+			fmt.Println("WARNING: File hash mismatch, but --no-hash-check is set. Applying patch anyway.")
 		}
 
 		// Remove trailing newline if present (optional)
@@ -88,5 +92,6 @@ var applyCmd = &cobra.Command{
 }
 
 func init() {
+	applyCmd.Flags().BoolVar(&noHashCheck, "no-hash-check", false, "Disable hash check when applying patch")
 	rootCmd.AddCommand(applyCmd)
 }
